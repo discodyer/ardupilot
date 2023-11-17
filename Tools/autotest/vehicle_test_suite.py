@@ -1482,7 +1482,7 @@ class Result(object):
         return ret
 
 
-class AutoTest(ABC):
+class TestSuite(ABC):
     """Base abstract class.
     It implements the common function for all vehicle types.
     """
@@ -1897,9 +1897,6 @@ class AutoTest(ABC):
             mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
             p1=1,  # reboot autopilot
         )
-
-    def run_cmd_run_prearms(self):
-        self.run_cmd(mavutil.mavlink.MAV_CMD_RUN_PREARM_CHECKS)
 
     def run_cmd_enable_high_latency(self, new_state, run_cmd=None):
         if run_cmd is None:
@@ -3895,15 +3892,39 @@ class AutoTest(ABC):
         self.assert_message_field_values(m, fieldvalues, verbose=verbose, epsilon=epsilon)
         return m
 
-    def assert_received_message_field_values(self, message, fieldvalues, verbose=True, very_verbose=False, epsilon=None, poll=False):  # noqa
+    def assert_received_message_field_values(self,
+                                             message,
+                                             fieldvalues,
+                                             verbose=True,
+                                             very_verbose=False,
+                                             epsilon=None,
+                                             poll=False,
+                                             timeout=None,
+                                             check_context=False,
+                                             ):
         if poll:
             self.poll_message(message)
-        m = self.assert_receive_message(message, verbose=verbose, very_verbose=very_verbose)
+        m = self.assert_receive_message(
+            message,
+            verbose=verbose,
+            very_verbose=very_verbose,
+            timeout=timeout,
+            check_context=check_context
+        )
         self.assert_message_field_values(m, fieldvalues, verbose=verbose, epsilon=epsilon)
         return m
 
     # FIXME: try to use wait_and_maintain here?
-    def wait_message_field_values(self, message, fieldvalues, timeout=10, epsilon=None, instance=None, minimum_duration=None):
+    def wait_message_field_values(self,
+                                  message,
+                                  fieldvalues,
+                                  timeout=10,
+                                  epsilon=None,
+                                  instance=None,
+                                  minimum_duration=None,
+                                  verbose=False,
+                                  very_verbose=False,
+                                  ):
 
         tstart = self.get_sim_time_cached()
         pass_start = None
@@ -3911,8 +3932,13 @@ class AutoTest(ABC):
             now = self.get_sim_time_cached()
             if now - tstart > timeout:
                 raise NotAchievedException("Field never reached values")
-            m = self.assert_receive_message(message, instance=instance)
-            if self.message_has_field_values(m, fieldvalues, epsilon=epsilon):
+            m = self.assert_receive_message(
+                message,
+                instance=instance,
+                verbose=verbose,
+                very_verbose=very_verbose,
+            )
+            if self.message_has_field_values(m, fieldvalues, epsilon=epsilon, verbose=verbose):
                 if minimum_duration is not None:
                     if pass_start is None:
                         pass_start = now
@@ -4298,7 +4324,7 @@ class AutoTest(ABC):
 
     def assert_receive_message(self,
                                type,
-                               timeout=1,
+                               timeout=None,
                                verbose=False,
                                very_verbose=False,
                                mav=None,
@@ -4306,6 +4332,8 @@ class AutoTest(ABC):
                                delay_fn=None,
                                instance=None,
                                check_context=False):
+        if timeout is None:
+            timeout = 1
         if mav is None:
             mav = self.mav
 
@@ -5669,7 +5697,7 @@ class AutoTest(ABC):
             y=0,
             z=0,
             frame=mavutil.mavlink.MAV_FRAME_GLOBAL,
-            autocontinue=1,
+            autocontinue=0,
             current=0,
             target_system=1,
             target_component=1,
@@ -5682,12 +5710,12 @@ class AutoTest(ABC):
                 seq, # seq
                 frame,
                 t,
-                0, # current
-                0, # autocontinue
+                current, # current
+                autocontinue, # autocontinue
                 p1, # p1
-                0, # p2
-                0, # p3
-                0, # p4
+                p2, # p2
+                p3, # p3
+                p4, # p4
                 x, # latitude
                 y, # longitude
                 z, # altitude
@@ -5937,14 +5965,14 @@ class AutoTest(ABC):
     @staticmethod
     def get_distance(loc1, loc2):
         """Get ground distance between two locations."""
-        return AutoTest.get_distance_accurate(loc1, loc2)
+        return TestSuite.get_distance_accurate(loc1, loc2)
         # dlat = loc2.lat - loc1.lat
         # try:
         #     dlong = loc2.lng - loc1.lng
         # except AttributeError:
         #     dlong = loc2.lon - loc1.lon
 
-        # return math.sqrt((dlat*dlat) + (dlong*dlong)*AutoTest.longitude_scale(loc2.lat)) * 1.113195e5
+        # return math.sqrt((dlat*dlat) + (dlong*dlong)*TestSuite.longitude_scale(loc2.lat)) * 1.113195e5
 
     @staticmethod
     def get_distance_accurate(loc1, loc2):
@@ -5981,23 +6009,23 @@ class AutoTest(ABC):
     @staticmethod
     def get_lat_attr(loc):
         '''return any found latitude attribute from loc'''
-        return AutoTest.get_latlon_attr(loc, ["lat", "latitude"])
+        return TestSuite.get_latlon_attr(loc, ["lat", "latitude"])
 
     @staticmethod
     def get_lon_attr(loc):
         '''return any found latitude attribute from loc'''
-        return AutoTest.get_latlon_attr(loc, ["lng", "lon", "longitude"])
+        return TestSuite.get_latlon_attr(loc, ["lng", "lon", "longitude"])
 
     @staticmethod
     def get_distance_int(loc1, loc2):
         """Get ground distance between two locations in the normal "int" form
         - lat/lon multiplied by 1e7"""
-        loc1_lat = AutoTest.get_lat_attr(loc1)
-        loc2_lat = AutoTest.get_lat_attr(loc2)
-        loc1_lon = AutoTest.get_lon_attr(loc1)
-        loc2_lon = AutoTest.get_lon_attr(loc2)
+        loc1_lat = TestSuite.get_lat_attr(loc1)
+        loc2_lat = TestSuite.get_lat_attr(loc2)
+        loc1_lon = TestSuite.get_lon_attr(loc1)
+        loc2_lon = TestSuite.get_lon_attr(loc2)
 
-        return AutoTest.get_distance_accurate(
+        return TestSuite.get_distance_accurate(
             mavutil.location(loc1_lat*1e-7, loc1_lon*1e-7),
             mavutil.location(loc2_lat*1e-7, loc2_lon*1e-7))
 
@@ -10283,62 +10311,40 @@ Also, ignores heartbeats not from our target system'''
         self.set_rc(9, 2000)
         self.wait_text("Gripper load grabb", check_context=True)
         self.progress("Test gripper with Mavlink cmd")
+
+        self.context_collect('STATUSTEXT')
         self.progress("Releasing load")
-        self.wait_text("Gripper load releas",
-                       the_function=lambda: self.mav.mav.command_long_send(1,
-                                                                           1,
-                                                                           mavutil.mavlink.MAV_CMD_DO_GRIPPER,
-                                                                           0,
-                                                                           1,
-                                                                           mavutil.mavlink.GRIPPER_ACTION_RELEASE,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           ))
+        self.run_cmd(
+            mavutil.mavlink.MAV_CMD_DO_GRIPPER,
+            p1=1,
+            p2=mavutil.mavlink.GRIPPER_ACTION_RELEASE
+        )
+        self.wait_text("Gripper load releas", check_context=True)
         self.progress("Grabbing load")
-        self.wait_text("Gripper load grabb",
-                       the_function=lambda: self.mav.mav.command_long_send(1,
-                                                                           1,
-                                                                           mavutil.mavlink.MAV_CMD_DO_GRIPPER,
-                                                                           0,
-                                                                           1,
-                                                                           mavutil.mavlink.GRIPPER_ACTION_GRAB,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           ))
+        self.run_cmd(
+            mavutil.mavlink.MAV_CMD_DO_GRIPPER,
+            p1=1,
+            p2=mavutil.mavlink.GRIPPER_ACTION_GRAB
+        )
+        self.wait_text("Gripper load grabb", check_context=True)
+
+        self.context_clear_collection('STATUSTEXT')
         self.progress("Releasing load")
-        self.wait_text("Gripper load releas",
-                       the_function=lambda: self.mav.mav.command_long_send(1,
-                                                                           1,
-                                                                           mavutil.mavlink.MAV_CMD_DO_GRIPPER,
-                                                                           0,
-                                                                           1,
-                                                                           mavutil.mavlink.GRIPPER_ACTION_RELEASE,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           ))
+        self.run_cmd_int(
+            mavutil.mavlink.MAV_CMD_DO_GRIPPER,
+            p1=1,
+            p2=mavutil.mavlink.GRIPPER_ACTION_RELEASE
+        )
+        self.wait_text("Gripper load releas", check_context=True)
+
         self.progress("Grabbing load")
-        self.wait_text("Gripper load grabb",
-                       the_function=lambda: self.mav.mav.command_long_send(1,
-                                                                           1,
-                                                                           mavutil.mavlink.MAV_CMD_DO_GRIPPER,
-                                                                           0,
-                                                                           1,
-                                                                           mavutil.mavlink.GRIPPER_ACTION_GRAB,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           0,
-                                                                           ))
+        self.run_cmd_int(
+            mavutil.mavlink.MAV_CMD_DO_GRIPPER,
+            p1=1,
+            p2=mavutil.mavlink.GRIPPER_ACTION_GRAB
+        )
+        self.wait_text("Gripper load grabb", check_context=True)
+
         self.context_pop()
         self.reboot_sitl()
 

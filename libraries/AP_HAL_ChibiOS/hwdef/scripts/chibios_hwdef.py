@@ -411,9 +411,14 @@ class ChibiOSHWDef(object):
                 self.type.startswith('UART')) and (
                 (self.label.endswith('_TX') or
                  self.label.endswith('_RX') or
-                 self.label.endswith('_CTS') or
-                 self.label.endswith('_RTS'))):
+                 self.label.endswith('_CTS'))):
                 v = "PULLUP"
+
+            # pulldown on RTS to prevent radios from staying in bootloader
+            if (self.type.startswith('USART') or
+                self.type.startswith('UART')) and (
+                 self.label.endswith('_RTS')):
+                v = "PULLDOWN"
 
             if (self.type.startswith('SWD') and
                     'SWDIO' in self.label):
@@ -1478,7 +1483,7 @@ INCLUDE common.ld
         devlist = []
         for dev in self.spidev:
             if len(dev) != 7:
-                print("Badly formed SPIDEV line %s" % dev)
+                self.error("Badly formed SPIDEV line %s" % dev)
             name = '"' + dev[0] + '"'
             bus = dev[1]
             devid = dev[2]

@@ -61,7 +61,7 @@ define AP_BEACON_ENABLED 0
 # restricted battery backends:
 define AP_BATTERY_BACKEND_DEFAULT_ENABLED 0
 define AP_BATTERY_ANALOG_ENABLED 1
-define AP_BATTERY_ESC_ENABLED 1
+define AP_BATTERY_ESC_ENABLED HAL_WITH_ESC_TELEM
 define AP_BATTERY_UAVCAN_BATTERYINFO_ENABLED HAL_ENABLE_DRONECAN_DRIVERS
 define AP_BATTERY_SUM_ENABLED 1
 define AP_BATTERY_SYNTHETIC_CURRENT_ENABLED 1
@@ -126,3 +126,8 @@ define AP_AIRSPEED_MS5525_ENABLED 1
 define AP_AIRSPEED_SDP3X_ENABLED 1
 define AP_AIRSPEED_NMEA_ENABLED 1  # additional checks for vehicle type in .cpp
 define AP_AIRSPEED_DRONECAN_ENABLED HAL_ENABLE_DRONECAN_DRIVERS
+
+# don't need payload place mission items on these boards, it's very niche:
+define AP_MISSION_NAV_PAYLOAD_PLACE_ENABLED 0
+# don't need the payload place flight behaviour either:
+define AC_PAYLOAD_PLACE_ENABLED 0
