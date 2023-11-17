@@ -11,18 +11,25 @@ APJ_BOARD_ID 1155
 # crystal frequency, setup to use external oscillator
 OSCILLATOR_HZ 8000000
 
-FLASH_SIZE_KB 512
+# ChibiOS system timer
+STM32_ST_USE_TIMER 5
 
-# reserve 16k for bootloader and 32k for flash storage
-FLASH_RESERVE_START_KB 48
+FLASH_SIZE_KB 1024
+
+# bootloader takes first sector
+FLASH_RESERVE_START_KB 16
+
+define HAL_STORAGE_SIZE 16384
+define STORAGE_FLASH_PAGE 1
 
 # only one I2C bus
 I2C_ORDER I2C1
 
-# Buzzer - DMA timer channel use by LEDs
-#PD15 TIM4_CH4 TIM4 GPIO(80) ALARM
+# Beeper
 PC15 BUZZER OUTPUT GPIO(80) LOW
 define HAL_BUZZER_PIN 80
+define HAL_BUZZER_ON 1
+define HAL_BUZZER_OFF 0
 
 # USB
 PA11 OTG_FS_DM OTG1
@@ -72,27 +79,27 @@ define BOARD_RSSI_ANA_PIN 15
 SERIAL_ORDER OTG1 USART1 USART2 USART3 UART4 UART5 USART6
 
 # USART1
-PA9  USART1_TX USART1
-PA10 USART1_RX USART1 NODMA
+PA10 USART1_RX USART1
+PA9 USART1_TX USART1
 
 # USART2
 PA2 USART2_TX USART2
-PA3 USART2_RX USART2 NODMA
+PA3 USART2_RX USART2
 
 # USART3
 PB10 USART3_TX USART3
-PB11 USART3_RX USART3 
+PB11 USART3_RX USART3
 
 # UART4
 PA0 UART4_TX UART4
-PA1 UART4_RX UART4 NODMA
+PA1 UART4_RX UART4
 
 # UART5
 PC12 UART5_TX UART5 NODMA
-PD2  UART5_RX UART5 NODMA
+PD2 UART5_RX UART5 NODMA
 
 # USART6
-PC6 USART6_TX USART6
+PC6 USART6_TX USART6 NODMA
 PC7 USART6_RX USART6 NODMA
 
 # Motors
@@ -104,36 +111,29 @@ PB3  TIM2_CH2 TIM2 PWM(4) GPIO(53) # Motor 4
 PC9  TIM8_CH4 TIM8 PWM(5) GPIO(54) # Motor 5
 PC8  TIM8_CH3 TIM8 PWM(6) GPIO(55) # Motor 6
 
-# NeoPixel LED strip
-PA8 TIM1_CH1 TIM1 PWM(6) GPIO(58)
-PA15 LED0 OUTPUT LOW GPIO(90) # LED
+# LEDs
+
+PA15 LED0 OUTPUT LOW GPIO(90)
+define HAL_GPIO_A_LED_PIN 90
+PA8 TIM1_CH1 TIM1 PWM(7) GPIO(56) # M7
+define HAL_GPIO_LED_OFF 1
 
 # Misc Timer Stuff
 #PA3 TIM5_CH4 TIM5 PWM(10) GPIO(59)			# PPM/Unused - for future use according to Flywoo
 
-DMA_PRIORITY USART1* TIM1* TIM3*
-DMA_NOSHARE SPI1_TX SPI1_RX TIM1_CH2 TIM3_CH3
-
-define HAL_STORAGE_SIZE 15360
-STORAGE_FLASH_PAGE 1
+DMA_NOSHARE TIM3_UP TIM2_UP TIM8_UP SPI1*
+DMA_PRIORITY TIM3_UP TIM2_UP TIM8_UP SPI1*
 
 # enable logging to dataflash
 define HAL_LOGGING_DATAFLASH_ENABLED 1
 
 # spi devices
-SPIDEV icm42688  SPI1 DEVID1 ICM42688_CS MODE3   2*MHZ   8*MHZ
-SPIDEV osd       SPI2 DEVID2 AT7456E_CS  MODE0   10*MHZ  10*MHZ
-SPIDEV dataflash SPI3 DEVID3 FLASH_CS    MODE3   104*MHZ 104*MHZ
-
-# no built-in compass, but probe the i2c bus for all possible
-# external compass types
-define ALLOW_ARM_NO_COMPASS
-define HAL_PROBE_EXTERNAL_I2C_COMPASSES
-define HAL_I2C_INTERNAL_MASK 0
+SPIDEV icm42688  SPI1 DEVID1 ICM42688_CS MODE3   1*MHZ   8*MHZ
+SPIDEV osd       SPI2 DEVID1 AT7456E_CS  MODE0   10*MHZ  10*MHZ
+SPIDEV dataflash SPI3 DEVID1 FLASH_CS    MODE3   104*MHZ 104*MHZ
 
 # one IMU
 IMU Invensensev3 SPI:icm42688 ROTATION_PITCH_180_YAW_90
-define HAL_DEFAULT_INS_FAST_SAMPLE 1
 
 # one BARO
 BARO BMP280 I2C:0:0x76
@@ -141,11 +141,11 @@ define AP_BARO_BACKEND_DEFAULT_ENABLED 0
 define AP_BARO_BMP280_ENABLED 1
 
 # setup for OSD
-define OSD_ENABLED 1
-define HAL_OSD_TYPE_DEFAULT 1
-ROMFS_WILDCARD libraries/AP_OSD/fonts/font0.bin
+#define OSD_ENABLED 1
+#define HAL_OSD_TYPE_DEFAULT 1
+#ROMFS_WILDCARD libraries/AP_OSD/fonts/font*.bin
 
-define STM32_PWM_USE_ADVANCED TRUE
+#define STM32_PWM_USE_ADVANCED TRUE
 
 # FFT option (disabled by default)
 # define HAL_GYROFFT_ENABLED 1
@@ -162,4 +162,25 @@ define STM32_PWM_USE_ADVANCED TRUE
 
 #define DEFAULT_NTF_LED_TYPES 257
 
+# this reduces features to keep the firmware small. This is not
+# actually needed as of February 2018 as the full build does fit in
+# 1M, but it prepares us for when large features such as scripting are
+# added to the build
+include ../include/minimize_features.inc
+
+# we don't have a flash page spare to write parameters to:
+undef STORAGE_FLASH_PAGE
+
+# minimal drivers to reduce flash usage
+include ../include/minimal.inc
+
+# no built-in compass, but probe the i2c bus for all possible
+# external compass types
+define ALLOW_ARM_NO_COMPASS
+define HAL_PROBE_EXTERNAL_I2C_COMPASSES
+define HAL_I2C_INTERNAL_MASK 0
+define HAL_COMPASS_AUTO_ROT_DEFAULT 2
+define HAL_DEFAULT_INS_FAST_SAMPLE 3
+# Motor order implies Betaflight/X for standard ESCs
+define HAL_FRAME_TYPE_DEFAULT 12
 

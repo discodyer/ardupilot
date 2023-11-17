@@ -19,7 +19,8 @@
 #include <AP_ExternalAHRS/AP_ExternalAHRS.h>
 #include "AP_GPS_ExternalAHRS.h"
 
-#if HAL_EXTERNAL_AHRS_ENABLED
+#if 0
+// #if HAL_EXTERNAL_AHRS_ENABLED
 
 // Reading does nothing in this class; we simply return whether or not
 // the latest reading has been consumed.  By calling this function we assume

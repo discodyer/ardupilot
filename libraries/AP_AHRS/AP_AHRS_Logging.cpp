@@ -4,10 +4,10 @@
 #include <AC_AttitudeControl/AC_AttitudeControl.h>
 #include <AC_AttitudeControl/AC_PosControl.h>
 
-
 // Write an AHRS2 packet
 void AP_AHRS::Write_AHRS2() const
 {
+#if AP_AHRS_LOGGER_ENABLED
     Vector3f euler;
     Location loc;
     Quaternion quat;
@@ -29,11 +29,13 @@ void AP_AHRS::Write_AHRS2() const
         q4    : quat.q4,
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
+#endif
 }
 
 // Write AOA and SSA
 void AP_AHRS::Write_AOA_SSA(void) const
 {
+#if AP_AHRS_LOGGER_ENABLED
     const struct log_AOA_SSA aoa_ssa{
         LOG_PACKET_HEADER_INIT(LOG_AOA_SSA_MSG),
         time_us         : AP_HAL::micros64(),
@@ -42,11 +44,13 @@ void AP_AHRS::Write_AOA_SSA(void) const
     };
 
     AP::logger().WriteBlock(&aoa_ssa, sizeof(aoa_ssa));
+#endif
 }
 
 // Write an attitude packet
 void AP_AHRS::Write_Attitude(const Vector3f &targets) const
 {
+#if AP_AHRS_LOGGER_ENABLED
     const struct log_Attitude pkt{
         LOG_PACKET_HEADER_INIT(LOG_ATTITUDE_MSG),
         time_us         : AP_HAL::micros64(),
@@ -61,10 +65,13 @@ void AP_AHRS::Write_Attitude(const Vector3f &targets) const
         active          : uint8_t(active_EKF_type()),
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
+#endif
 }
 
 void AP_AHRS::Write_Origin(LogOriginType origin_type, const Location &loc) const
 {
+#if AP_AHRS_LOGGER_ENABLED
+    
     const struct log_ORGN pkt{
         LOG_PACKET_HEADER_INIT(LOG_ORGN_MSG),
         time_us     : AP_HAL::micros64(),
@@ -74,11 +81,14 @@ void AP_AHRS::Write_Origin(LogOriginType origin_type, const Location &loc) const
         altitude    : loc.alt
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
+#endif
+
 }
 
 // Write a POS packet
 void AP_AHRS::Write_POS() const
 {
+#if AP_AHRS_LOGGER_ENABLED
     Location loc;
     if (!get_location(loc)) {
         return;
@@ -95,11 +105,13 @@ void AP_AHRS::Write_POS() const
         rel_origin_alt : get_relative_position_D_origin(origin) ? -origin : AP::logger().quiet_nanf(),
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
+#endif
 }
 
 // Write a packet for video stabilisation
 void AP_AHRS::write_video_stabilisation() const
 {
+#if AP_AHRS_LOGGER_ENABLED
     Quaternion current_attitude;
     get_quat_body_to_ned(current_attitude);
     Vector3f accel = get_accel() - get_accel_bias();
@@ -118,11 +130,13 @@ void AP_AHRS::write_video_stabilisation() const
         Q4              : current_attitude.q4,
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
+#endif
 }
 
 // Write an attitude view packet
 void AP_AHRS_View::Write_AttitudeView(const Vector3f &targets) const
 {
+#if AP_AHRS_LOGGER_ENABLED
     const struct log_Attitude pkt{
         LOG_PACKET_HEADER_INIT(LOG_ATTITUDE_MSG),
         time_us         : AP_HAL::micros64(),
@@ -137,12 +151,14 @@ void AP_AHRS_View::Write_AttitudeView(const Vector3f &targets) const
         active          : uint8_t(AP::ahrs().active_EKF_type()),
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
+#endif
 }
 
 // Write a rate packet
 void AP_AHRS_View::Write_Rate(const AP_Motors &motors, const AC_AttitudeControl &attitude_control,
                                 const AC_PosControl &pos_control) const
 {
+#if AP_AHRS_LOGGER_ENABLED
     const Vector3f &rate_targets = attitude_control.rate_bf_targets();
     const Vector3f &accel_target = pos_control.get_accel_target_cmss();
     const auto timeus = AP_HAL::micros64();
@@ -183,4 +199,5 @@ void AP_AHRS_View::Write_Rate(const AP_Motors &motors, const AC_AttitudeControl 
         };
         AP::logger().WriteBlock(&pkt_ATSC, sizeof(pkt_ATSC));
     }
+#endif
 }

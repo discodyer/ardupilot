@@ -5,7 +5,7 @@
 #include <AP_MSP/msp.h>
 
 #ifndef AP_AIRSPEED_ENABLED
-#define AP_AIRSPEED_ENABLED 1
+#define AP_AIRSPEED_ENABLED 0
 #endif
 
 #ifndef AP_AIRSPEED_MSP_ENABLED

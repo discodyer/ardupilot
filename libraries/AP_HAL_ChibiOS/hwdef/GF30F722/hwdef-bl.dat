@@ -10,16 +10,25 @@ APJ_BOARD_ID 1155
 # crystal frequency, setup to use external oscillator
 OSCILLATOR_HZ 8000000
 
-FLASH_SIZE_KB 512
+# ChibiOS system timer
+STM32_ST_USE_TIMER 5
+
+FLASH_SIZE_KB 1024
 
 # don't allow bootloader to use more than 16k
 FLASH_USE_MAX_KB 16
 
-# bootloader is installed at zero offset
+# the location where the bootloader will put the firmware
+FLASH_BOOTLOADER_LOAD_KB 16
+
+# bootloader starts at zero offset
 FLASH_RESERVE_START_KB 0
 
-# the location where the bootloader will put the firmware
-FLASH_BOOTLOADER_LOAD_KB 48
+# USB setup
+USB_STRING_MANUFACTURER "ArduPilot"
+
+# baudrate to run bootloader at on uarts
+define BOOTLOADER_BAUDRATE 115200
 
 # order of UARTs (and USB). Allow bootloading on USB and telem1
 SERIAL_ORDER OTG1 USART1
@@ -34,6 +43,9 @@ PA9  USART1_TX USART1
 
 PA13 JTMS-SWDIO SWD
 PA14 JTCK-SWCLK SWD
+
+# default to all pins low to avoid ESD issues
+DEFAULTGPIO OUTPUT LOW PULLDOWN
 
 PA15 LED_BOOTLOADER OUTPUT LOW
 define HAL_LED_ON 0

@@ -174,7 +174,7 @@
 // dropping little used features. We use this to allow us to keep
 // FMUv2 going for as long as possible
 #ifndef HAL_MINIMIZE_FEATURES
-#define HAL_MINIMIZE_FEATURES       0
+#define HAL_MINIMIZE_FEATURES       1
 #endif
 
 #ifndef BOARD_FLASH_SIZE

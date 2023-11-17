@@ -3,7 +3,7 @@
 #include <AP_HAL/AP_HAL_Boards.h>
 
 #ifndef AP_GPS_BACKEND_DEFAULT_ENABLED
-#define AP_GPS_BACKEND_DEFAULT_ENABLED 1
+#define AP_GPS_BACKEND_DEFAULT_ENABLED 0
 #endif
 
 #ifndef AP_GPS_ERB_ENABLED
@@ -43,5 +43,5 @@
 #endif
 
 #ifndef AP_GPS_UBLOX_ENABLED
-  #define AP_GPS_UBLOX_ENABLED 1
+  #define AP_GPS_UBLOX_ENABLED 0
 #endif

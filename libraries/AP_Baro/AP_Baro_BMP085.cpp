@@ -13,7 +13,6 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "AP_Baro_BMP085.h"
-
 #if AP_BARO_BMP085_ENABLED
 
 #include <utility>

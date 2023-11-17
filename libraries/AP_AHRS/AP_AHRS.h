@@ -36,7 +36,9 @@
 class AP_AHRS_View;
 
 #define AP_AHRS_NAVEKF_SETTLE_TIME_MS 20000     // time in milliseconds the ekf needs to settle after being started
-
+#ifndef AP_AHRS_LOGGER_ENABLED
+#define AP_AHRS_LOGGER_ENABLED 0
+#endif
 
 // fwd declare GSF estimator
 class EKFGSF_yaw;
