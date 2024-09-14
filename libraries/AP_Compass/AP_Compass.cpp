@@ -1,3 +1,7 @@
+#include "AP_Compass_config.h"
+
+#if AP_COMPASS_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 #include <AP_HAL_Linux/I2CDevice.h>
@@ -9,6 +13,7 @@
 #include <AP_ExternalAHRS/AP_ExternalAHRS.h>
 #include <AP_CustomRotations/AP_CustomRotations.h>
 #include <GCS_MAVLink/GCS.h>
+#include <AP_AHRS/AP_AHRS.h>
 
 #include "AP_Compass_config.h"
 
@@ -27,6 +32,7 @@
 #if AP_COMPASS_DRONECAN_ENABLED
 #include "AP_Compass_DroneCAN.h"
 #endif
+#include "AP_Compass_QMC5883P.h"
 #include "AP_Compass_MMC3416.h"
 #include "AP_Compass_MMC5xx3.h"
 #include "AP_Compass_MAG3110.h"
@@ -507,12 +513,12 @@ const AP_Param::GroupInfo Compass::var_info[] = {
     AP_SUBGROUPINFO(_per_motor, "PMOT", 32, Compass, Compass_PerMotor),
 #endif
 
-    // @Param: TYPEMASK
+    // @Param: DISBLMSK
     // @DisplayName: Compass disable driver type mask
     // @Description: This is a bitmask of driver types to disable. If a driver type is set in this mask then that driver will not try to find a sensor at startup
     // @Bitmask: 0:HMC5883,1:LSM303D,2:AK8963,3:BMM150,4:LSM9DS1,5:LIS3MDL,6:AK09916,7:IST8310,8:ICM20948,9:MMC3416,11:DroneCAN,12:QMC5883,14:MAG3110,15:IST8308,16:RM3100,17:MSP,18:ExternalAHRS
     // @User: Advanced
-    AP_GROUPINFO("TYPEMASK", 33, Compass, _driver_type_mask, 0),
+    AP_GROUPINFO("DISBLMSK", 33, Compass, _driver_type_mask, 0),
 
     // @Param: FLTR_RNG
     // @DisplayName: Range in which sample is accepted
@@ -726,7 +732,7 @@ void Compass::init()
 
     // convert to new custom rotation method
     // PARAMETER_CONVERSION - Added: Nov-2021
-#if !APM_BUILD_TYPE(APM_BUILD_AP_Periph)
+#if AP_CUSTOMROTATIONS_ENABLED
     for (StateIndex i(0); i<COMPASS_MAX_INSTANCES; i++) {
         if (_state[i].orientation != ROTATION_CUSTOM_OLD) {
             continue;
@@ -746,7 +752,7 @@ void Compass::init()
         }
         break;
     }
-#endif // !APM_BUILD_TYPE(APM_BUILD_AP_Periph)
+#endif  // AP_CUSTOMROTATIONS_ENABLED
 
 #if COMPASS_MAX_INSTANCES > 1
     // Look if there was a primary compass setup in previous version
@@ -1132,6 +1138,26 @@ void Compass::_probe_external_i2c_compasses(void)
 #endif
 #endif  // AP_COMPASS_QMC5883L_ENABLED
 
+#if AP_COMPASS_QMC5883P_ENABLED
+    //external i2c bus
+    FOREACH_I2C_EXTERNAL(i) {
+        ADD_BACKEND(DRIVER_QMC5883P, AP_Compass_QMC5883P::probe(GET_I2C_DEVICE(i, HAL_COMPASS_QMC5883P_I2C_ADDR),
+                    true, HAL_COMPASS_QMC5883P_ORIENTATION_EXTERNAL));
+    }
+
+    // internal i2c bus
+#if !defined(HAL_SKIP_AUTO_INTERNAL_I2C_PROBE)
+    if (all_external) {
+        // only probe QMC5883P on internal if we are treating internals as externals
+        FOREACH_I2C_INTERNAL(i) {
+            ADD_BACKEND(DRIVER_QMC5883P, AP_Compass_QMC5883P::probe(GET_I2C_DEVICE(i, HAL_COMPASS_QMC5883P_I2C_ADDR),
+                        all_external,
+                        all_external?HAL_COMPASS_QMC5883P_ORIENTATION_EXTERNAL:HAL_COMPASS_QMC5883P_ORIENTATION_INTERNAL));
+        }
+    }
+#endif
+#endif  // AP_COMPASS_QMC5883P_ENABLED
+
 #ifndef HAL_BUILD_AP_PERIPH
     // AK09916 on ICM20948
 #if AP_COMPASS_AK09916_ENABLED && AP_COMPASS_ICM20948_ENABLED
@@ -1298,7 +1324,7 @@ void Compass::_detect_backends(void)
 #if AP_COMPASS_EXTERNALAHRS_ENABLED
     const int8_t serial_port = AP::externalAHRS().get_port(AP_ExternalAHRS::AvailableSensor::COMPASS);
     if (serial_port >= 0) {
-        ADD_BACKEND(DRIVER_EXTERNALAHRS, new AP_Compass_ExternalAHRS(serial_port));
+        ADD_BACKEND(DRIVER_EXTERNALAHRS, NEW_NOTHROW AP_Compass_ExternalAHRS(serial_port));
     }
 #endif
     
@@ -1312,7 +1338,7 @@ void Compass::_detect_backends(void)
 #endif
 
 #if AP_COMPASS_SITL_ENABLED && !AP_TEST_DRONECAN_DRIVERS
-    ADD_BACKEND(DRIVER_SITL, new AP_Compass_SITL());
+    ADD_BACKEND(DRIVER_SITL, NEW_NOTHROW AP_Compass_SITL());
 #endif
 
 #if AP_COMPASS_DRONECAN_ENABLED
@@ -1331,7 +1357,7 @@ void Compass::_detect_backends(void)
 #if AP_COMPASS_MSP_ENABLED
     for (uint8_t i=0; i<8; i++) {
         if (msp_instance_mask & (1U<<i)) {
-            ADD_BACKEND(DRIVER_MSP, new AP_Compass_MSP(i));
+            ADD_BACKEND(DRIVER_MSP, NEW_NOTHROW AP_Compass_MSP(i));
         }
     }
 #endif
@@ -1536,7 +1562,7 @@ void Compass::probe_dronecan_compasses(void)
                 }
                 // We have found a replacement mag, let's replace the existing one
                 // with this by setting the priority to zero and calling uavcan probe
-                gcs().send_text(MAV_SEVERITY_ALERT, "Mag: Compass #%d with DEVID %lu replaced", uint8_t(i), (unsigned long)_priority_did_list[i]);
+                GCS_SEND_TEXT(MAV_SEVERITY_ALERT, "Mag: Compass #%d with DEVID %lu replaced", uint8_t(i), (unsigned long)_priority_did_list[i]);
                 _priority_did_stored_list[i].set_and_save(0);
                 _priority_did_list[i] = 0;
 
@@ -1718,7 +1744,7 @@ Compass::read(void)
 #if COMPASS_LEARN_ENABLED
     if (_learn == LEARN_INFLIGHT && !learn_allocated) {
         learn_allocated = true;
-        learn = new CompassLearn(*this);
+        learn = NEW_NOTHROW CompassLearn(*this);
     }
     if (_learn == LEARN_INFLIGHT && learn != nullptr) {
         learn->update();
@@ -2215,3 +2241,5 @@ Compass &compass()
 }
 
 }
+
+#endif  // AP_COMPASS_ENABLED

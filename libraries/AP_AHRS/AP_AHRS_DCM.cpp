@@ -101,6 +101,36 @@ AP_AHRS_DCM::update()
 
     // remember the last origin for fallback support
     IGNORE_RETURN(AP::ahrs().get_origin(last_origin));
+
+#if HAL_LOGGING_ENABLED
+    const uint32_t now_ms = AP_HAL::millis();
+    if (now_ms - last_log_ms >= 100) {
+        // log DCM at 10Hz
+        last_log_ms = now_ms;
+
+// @LoggerMessage: DCM
+// @Description: DCM Estimator Data
+// @Field: TimeUS: Time since system startup
+// @Field: Roll: estimated roll
+// @Field: Pitch: estimated pitch
+// @Field: Yaw: estimated yaw
+// @Field: ErrRP: lowest estimated gyro drift error
+// @Field: ErrYaw: difference between measured yaw and DCM yaw estimate
+        AP::logger().WriteStreaming(
+            "DCM",
+            "TimeUS," "Roll," "Pitch," "Yaw," "ErrRP," "ErrYaw",
+            "s"       "d"     "d"      "d"    "d"      "h",
+            "F"       "0"     "0"      "0"    "0"      "0",
+            "Q"       "f"     "f"      "f"    "f"      "f",
+            AP_HAL::micros64(),
+            degrees(roll),
+            degrees(pitch),
+            wrap_360(degrees(yaw)),
+            get_error_rp(),
+            get_error_yaw()
+       );
+    }
+#endif // HAL_LOGGING_ENABLED
 }
 
 void AP_AHRS_DCM::get_results(AP_AHRS_Backend::Estimates &results)
@@ -1012,6 +1042,13 @@ void AP_AHRS_DCM::estimate_wind(void)
 #endif
 }
 
+#ifdef AP_AHRS_EXTERNAL_WIND_ESTIMATE_ENABLED
+void AP_AHRS_DCM::set_external_wind_estimate(float speed, float direction) {
+    _wind.x = -cosf(radians(direction)) * speed;
+    _wind.y = -sinf(radians(direction)) * speed;
+    _wind.z = 0;
+}
+#endif
 
 // return our current position estimate using
 // dead-reckoning or GPS
@@ -1205,11 +1242,14 @@ Vector2f AP_AHRS_DCM::groundspeed_vector(void)
 bool AP_AHRS_DCM::get_vert_pos_rate_D(float &velocity) const
 {
     Vector3f velned;
-    if (!get_velocity_NED(velned)) {
-        return false;
+    if (get_velocity_NED(velned)) {
+        velocity = velned.z;
+        return true;
+    } else if (AP::baro().healthy()) {
+        velocity = -AP::baro().get_climb_rate();
+        return true;
     }
-    velocity = velned.z;
-    return true;
+    return false;
 }
 
 // returns false if we fail arming checks, in which case the buffer will be populated with a failure message

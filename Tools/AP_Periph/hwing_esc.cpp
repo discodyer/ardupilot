@@ -14,6 +14,8 @@
 
 #ifdef HAL_PERIPH_ENABLE_HWESC
 
+#include <SITL/SITL.h>
+
 extern const AP_HAL::HAL& hal;
 
 #define TELEM_HEADER 0x9B
@@ -162,7 +164,7 @@ void AP_Periph_FW::hwesc_telem_update()
     pkt.power_rating_pct = t.phase_current;
     pkt.error_count = t.error_count;
 
-    uint8_t buffer[UAVCAN_EQUIPMENT_ESC_STATUS_MAX_SIZE] {};
+    uint8_t buffer[UAVCAN_EQUIPMENT_ESC_STATUS_MAX_SIZE];
     uint16_t total_size = uavcan_equipment_esc_Status_encode(&pkt, buffer, !canfdout());
     canard_broadcast(UAVCAN_EQUIPMENT_ESC_STATUS_SIGNATURE,
                     UAVCAN_EQUIPMENT_ESC_STATUS_ID,

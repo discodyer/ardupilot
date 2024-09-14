@@ -78,6 +78,24 @@ const AP_Param::GroupInfo AC_AttitudeControl_Sub::var_info[] = {
     // @Description: Roll axis rate controller PD sum maximum.  The maximum/minimum value that the sum of the P and D term can output
     // @Range: 0 1
     // @Increment: 0.01
+
+    // @Param: RAT_RLL_D_FF
+    // @DisplayName: Roll Derivative FeedForward Gain
+    // @Description: FF D Gain which produces an output that is proportional to the rate of change of the target
+    // @Range: 0 0.02
+    // @Increment: 0.0001
+    // @User: Advanced
+
+    // @Param: RAT_RLL_NTF
+    // @DisplayName: Roll Target notch filter index
+    // @Description: Roll Target notch filter index
+    // @Range: 1 8
+    // @User: Advanced
+
+    // @Param: RAT_RLL_NEF
+    // @DisplayName: Roll Error notch filter index
+    // @Description: Roll Error notch filter index
+    // @Range: 1 8
     // @User: Advanced
 
     AP_SUBGROUPINFO(_pid_rate_roll, "RAT_RLL_", 1, AC_AttitudeControl_Sub, AC_PID),
@@ -153,6 +171,24 @@ const AP_Param::GroupInfo AC_AttitudeControl_Sub::var_info[] = {
     // @Description: Pitch axis rate controller PD sum maximum.  The maximum/minimum value that the sum of the P and D term can output
     // @Range: 0 1
     // @Increment: 0.01
+
+    // @Param: RAT_PIT_D_FF
+    // @DisplayName: Pitch Derivative FeedForward Gain
+    // @Description: FF D Gain which produces an output that is proportional to the rate of change of the target
+    // @Range: 0 0.02
+    // @Increment: 0.0001
+    // @User: Advanced
+
+    // @Param: RAT_PIT_NTF
+    // @DisplayName: Pitch Target notch filter index
+    // @Description: Pitch Target notch filter index
+    // @Range: 1 8
+    // @User: Advanced
+
+    // @Param: RAT_PIT_NEF
+    // @DisplayName: Pitch Error notch filter index
+    // @Description: Pitch Error notch filter index
+    // @Range: 1 8
     // @User: Advanced
 
     AP_SUBGROUPINFO(_pid_rate_pitch, "RAT_PIT_", 2, AC_AttitudeControl_Sub, AC_PID),
@@ -228,6 +264,24 @@ const AP_Param::GroupInfo AC_AttitudeControl_Sub::var_info[] = {
     // @Description: Yaw axis rate controller PD sum maximum.  The maximum/minimum value that the sum of the P and D term can output
     // @Range: 0 1
     // @Increment: 0.01
+
+    // @Param: RAT_YAW_D_FF
+    // @DisplayName: Yaw Derivative FeedForward Gain
+    // @Description: FF D Gain which produces an output that is proportional to the rate of change of the target
+    // @Range: 0 0.02
+    // @Increment: 0.0001
+    // @User: Advanced
+
+    // @Param: RAT_YAW_NTF
+    // @DisplayName: Yaw Target notch filter index
+    // @Description: Yaw Target notch filter index
+    // @Range: 1 8
+    // @User: Advanced
+
+    // @Param: RAT_YAW_NEF
+    // @DisplayName: Yaw Error notch filter index
+    // @Description: Yaw Error notch filter index
+    // @Range: 1 8
     // @User: Advanced
 
     AP_SUBGROUPINFO(_pid_rate_yaw, "RAT_YAW_", 3, AC_AttitudeControl_Sub, AC_PID),
@@ -369,10 +423,12 @@ void AC_AttitudeControl_Sub::rate_controller_run()
     // move throttle vs attitude mixing towards desired (called from here because this is conveniently called on every iteration)
     update_throttle_rpy_mix();
 
-    Vector3f gyro_latest = _ahrs.get_gyro_latest();
-    _motors.set_roll(get_rate_roll_pid().update_all(_ang_vel_body.x, gyro_latest.x, _dt, _motors.limit.roll));
-    _motors.set_pitch(get_rate_pitch_pid().update_all(_ang_vel_body.y, gyro_latest.y, _dt, _motors.limit.pitch));
-    _motors.set_yaw(get_rate_yaw_pid().update_all(_ang_vel_body.z, gyro_latest.z, _dt, _motors.limit.yaw));
+    _rate_gyro = _ahrs.get_gyro_latest();
+    _rate_gyro_time_us = AP_HAL::micros64();
+
+    _motors.set_roll(get_rate_roll_pid().update_all(_ang_vel_body.x, _rate_gyro.x, _dt, _motors.limit.roll));
+    _motors.set_pitch(get_rate_pitch_pid().update_all(_ang_vel_body.y, _rate_gyro.y, _dt, _motors.limit.pitch));
+    _motors.set_yaw(get_rate_yaw_pid().update_all(_ang_vel_body.z, _rate_gyro.z, _dt, _motors.limit.yaw));
 
     control_monitor_update();
 }
@@ -428,4 +484,13 @@ void AC_AttitudeControl_Sub::input_euler_angle_roll_pitch_slew_yaw(float euler_r
         // holds the rov's angles
         input_euler_angle_roll_pitch_yaw(euler_roll_angle_cd, euler_pitch_angle_cd, euler_yaw_angle_cd, true);
     }
+}
+
+void AC_AttitudeControl_Sub::set_notch_sample_rate(float sample_rate)
+{
+#if AP_FILTER_ENABLED
+    _pid_rate_roll.set_notch_sample_rate(sample_rate);
+    _pid_rate_pitch.set_notch_sample_rate(sample_rate);
+    _pid_rate_yaw.set_notch_sample_rate(sample_rate);
+#endif
 }

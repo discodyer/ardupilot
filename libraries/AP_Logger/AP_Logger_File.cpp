@@ -173,7 +173,7 @@ void AP_Logger_File::periodic_1Hz()
          _front._params.disarm_ratemax > 0 ||
          _front._log_pause)) {
         // setup rate limiting if log rate max > 0Hz or log pause of streaming entries is requested
-        rate_limiter = new AP_Logger_RateLimiter(_front, _front._params.file_ratemax, _front._params.disarm_ratemax);
+        rate_limiter = NEW_NOTHROW AP_Logger_RateLimiter(_front, _front._params.file_ratemax, _front._params.disarm_ratemax);
     }
 }
 
@@ -234,7 +234,7 @@ bool AP_Logger_File::dirent_to_log_num(const dirent *de, uint16_t &log_num) cons
     }
 
     uint16_t thisnum = strtoul(de->d_name, nullptr, 10);
-    if (thisnum > MAX_LOG_FILES) {
+    if (thisnum > _front.get_max_num_logs()) {
         return false;
     }
     log_num = thisnum;
@@ -330,7 +330,7 @@ void AP_Logger_File::Prep_MinSpace()
         if (avail >= target_free) {
             break;
         }
-        if (count++ > MAX_LOG_FILES+10) {
+        if (count++ > _front.get_max_num_logs() + 10) {
             // *way* too many deletions going on here.  Possible internal error.
             INTERNAL_ERROR(AP_InternalError::error_t::logger_too_many_deletions);
             break;
@@ -360,24 +360,10 @@ void AP_Logger_File::Prep_MinSpace()
             }
         }
         log_to_remove++;
-        if (log_to_remove > MAX_LOG_FILES) {
+        if (log_to_remove > _front.get_max_num_logs()) {
             log_to_remove = 1;
         }
     } while (log_to_remove != first_log_to_remove);
-}
-
-/*
-  construct a log file name given a log number. 
-  The number in the log filename will *not* be zero-padded.
-  Note: Caller must free.
- */
-char *AP_Logger_File::_log_file_name_short(const uint16_t log_num) const
-{
-    char *buf = nullptr;
-    if (asprintf(&buf, "%s/%u.BIN", _log_directory, (unsigned)log_num) == -1) {
-        return nullptr;
-    }
-    return buf;
 }
 
 /*
@@ -385,32 +371,13 @@ char *AP_Logger_File::_log_file_name_short(const uint16_t log_num) const
   The number in the log filename will be zero-padded.
   Note: Caller must free.
  */
-char *AP_Logger_File::_log_file_name_long(const uint16_t log_num) const
+char *AP_Logger_File::_log_file_name(const uint16_t log_num) const
 {
     char *buf = nullptr;
     if (asprintf(&buf, "%s/%08u.BIN", _log_directory, (unsigned)log_num) == -1) {
         return nullptr;
     }
     return buf;
-}
-
-/*
-  return a log filename appropriate for the supplied log_num if a
-  filename exists with the short (not-zero-padded name) then it is the
-  appropirate name, otherwise the long (zero-padded) version is.
-  Note: Caller must free.
- */
-char *AP_Logger_File::_log_file_name(const uint16_t log_num) const
-{
-    char *filename = _log_file_name_short(log_num);
-    if (filename == nullptr) {
-        return nullptr;
-    }
-    if (file_exists(filename)) {
-        return filename;
-    }
-    free(filename);
-    return _log_file_name_long(log_num);
 }
 
 /*
@@ -461,7 +428,7 @@ bool AP_Logger_File::StartNewLogOK() const
     if (recent_open_error()) {
         return false;
     }
-#if !APM_BUILD_TYPE(APM_BUILD_Replay)
+#if !APM_BUILD_TYPE(APM_BUILD_Replay) && !APM_BUILD_TYPE(APM_BUILD_UNKNOWN)
     if (hal.scheduler->in_main_thread()) {
         return false;
     }
@@ -473,11 +440,6 @@ bool AP_Logger_File::StartNewLogOK() const
 bool AP_Logger_File::_WritePrioritisedBlock(const void *pBuffer, uint16_t size, bool is_critical)
 {
     WITH_SEMAPHORE(semaphore);
-
-    if (! WriteBlockCheckStartupMessages()) {
-        _dropped++;
-        return false;
-    }
 
 #if APM_BUILD_TYPE(APM_BUILD_Replay)
     if (AP::FS().write(_write_fd, pBuffer, size) != size) {
@@ -680,6 +642,14 @@ int16_t AP_Logger_File::get_log_data(const uint16_t list_entry, const uint16_t p
     return ret;
 }
 
+void AP_Logger_File::end_log_transfer()
+{
+    if (_read_fd != -1) {
+        AP::FS().close(_read_fd);
+        _read_fd = -1;
+    }
+}
+
 /*
   find size and date of a log
  */
@@ -719,6 +689,7 @@ uint16_t AP_Logger_File::get_num_logs()
             // not a log filename
             continue;
         }
+
         if (thisnum > high && (smallest_above_last == 0 || thisnum < smallest_above_last)) {
             smallest_above_last = thisnum;
         }
@@ -726,7 +697,7 @@ uint16_t AP_Logger_File::get_num_logs()
     AP::FS().closedir(d);
     if (smallest_above_last != 0) {
         // we have wrapped, add in the logs with high numbers
-        ret += (MAX_LOG_FILES - smallest_above_last) + 1;
+        ret += (_front.get_max_num_logs() - smallest_above_last) + 1;
     }
 
     return ret;
@@ -801,7 +772,7 @@ void AP_Logger_File::start_new_log(void)
 
     // set _open_error here to avoid infinite recursion.  Simply
     // writing a prioritised block may try to open a log - which means
-    // if anything in the start_new_log path does a gcs().send_text()
+    // if anything in the start_new_log path does a GCS_SEND_TEXT()
     // (for example), you will end up recursing if we don't take
     // precautions.  We will reset _open_error if we actually manage
     // to open the log...
@@ -826,7 +797,7 @@ void AP_Logger_File::start_new_log(void)
     if (_get_log_size(log_num) > 0 || log_num == 0) {
         log_num++;
     }
-    if (log_num > MAX_LOG_FILES) {
+    if (log_num > _front.get_max_num_logs()) {
         log_num = 1;
     }
     if (!write_fd_semaphore.take(1)) {
@@ -906,7 +877,7 @@ bool AP_Logger_File::write_lastlog_file(uint16_t log_num)
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL || CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 void AP_Logger_File::flush(void)
-#if APM_BUILD_TYPE(APM_BUILD_Replay)
+#if APM_BUILD_TYPE(APM_BUILD_Replay) || APM_BUILD_TYPE(APM_BUILD_UNKNOWN)
 {
     uint32_t tnow = AP_HAL::millis();
     while (_write_fd != -1 && _initialised && !recent_open_error() && _writebuf.available()) {
@@ -1115,7 +1086,7 @@ void AP_Logger_File::erase_next(void)
     free(fname);
 
     erase.log_num++;
-    if (erase.log_num <= MAX_LOG_FILES) {
+    if (erase.log_num <= _front.get_max_num_logs()) {
         return;
     }
     

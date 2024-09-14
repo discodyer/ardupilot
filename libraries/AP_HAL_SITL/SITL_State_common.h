@@ -8,15 +8,19 @@
 #define SITL_MCAST_PORT 20721
 #define SITL_SERVO_PORT 20722
 
-#include <SITL/SIM_Gimbal.h>
+#include <AP_HAL/utility/Socket_native.h>
+#include <SITL/SIM_SoloGimbal.h>
 #include <SITL/SIM_ADSB.h>
 #include <SITL/SIM_ADSB_Sagetech_MXS.h>
+#include <SITL/SIM_EFI_Hirth.h>
 #include <SITL/SIM_Vicon.h>
+#include <SITL/SIM_RF_Ainstein_LR_D1.h>
 #include <SITL/SIM_RF_Benewake_TF02.h>
 #include <SITL/SIM_RF_Benewake_TF03.h>
 #include <SITL/SIM_RF_Benewake_TFmini.h>
 #include <SITL/SIM_RF_NoopLoop.h>
 #include <SITL/SIM_RF_TeraRanger_Serial.h>
+#include <SITL/SIM_RF_JRE.h>
 #include <SITL/SIM_RF_LightWareSerial.h>
 #include <SITL/SIM_RF_LightWareSerialBinary.h>
 #include <SITL/SIM_RF_Lanbao.h>
@@ -32,6 +36,7 @@
 #include <SITL/SIM_RF_GYUS42v2.h>
 #include <SITL/SIM_VectorNav.h>
 #include <SITL/SIM_MicroStrain.h>
+#include <SITL/SIM_InertialLabs.h>
 #include <SITL/SIM_AIS.h>
 #include <SITL/SIM_GPS.h>
 
@@ -45,7 +50,10 @@
 #include <SITL/SIM_PS_LightWare_SF45B.h>
 
 #include <SITL/SIM_RichenPower.h>
+#include <SITL/SIM_Loweheiser.h>
 #include <SITL/SIM_FETtecOneWireESC.h>
+
+#include <SITL/SIM_ELRS.h>
 
 #include "AP_HAL_SITL.h"
 #include "AP_HAL_SITL_Namespace.h"
@@ -53,10 +61,6 @@
 #include "RCInput.h"
 
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/udp.h>
-#include <arpa/inet.h>
 #include <vector>
 
 #include <AP_Baro/AP_Baro.h>
@@ -65,7 +69,6 @@
 #include <AP_Terrain/AP_Terrain.h>
 #include <SITL/SITL.h>
 #include <SITL/SITL_Input.h>
-#include <AP_HAL/utility/Socket.h>
 
 class HAL_SITL;
 
@@ -87,7 +90,7 @@ public:
 
     // create a simulated serial device; type of device is given by
     // name parameter
-    SITL::SerialDevice *create_serial_sim(const char *name, const char *arg);
+    SITL::SerialDevice *create_serial_sim(const char *name, const char *arg, const uint8_t portNumber);
 
     // simulated airspeed, sonar and battery monitor
     float sonar_pin_voltage;    // pin 0
@@ -101,11 +104,11 @@ public:
     bool new_rc_input;
     uint16_t pwm_output[SITL_NUM_CHANNELS];
     bool output_ready = false;
-    
-#if HAL_SIM_GIMBAL_ENABLED
+
+#if AP_SIM_SOLOGIMBAL_ENABLED
     // simulated gimbal
     bool enable_gimbal;
-    SITL::Gimbal *gimbal;
+    SITL::SoloGimbal *gimbal;
 #endif
 
 #if HAL_SIM_ADSB_ENABLED
@@ -122,10 +125,14 @@ public:
     SITL::Vicon *vicon;
 #endif
 
+    // simulated Ainstein LR-D1 rangefinder:
+    SITL::RF_Ainstein_LR_D1 *ainsteinlrd1;
     // simulated Benewake tf02 rangefinder:
     SITL::RF_Benewake_TF02 *benewake_tf02;
     // simulated Benewake tf03 rangefinder:
     SITL::RF_Benewake_TF03 *benewake_tf03;
+    //simulated JAE JRE rangefinder:
+    SITL::RF_JRE *jre;
     // simulated Benewake tfmini rangefinder:
     SITL::RF_Benewake_TFmini *benewake_tfmini;
     //simulated NoopLoop TOFSense rangefinder:
@@ -193,9 +200,15 @@ public:
     // simulated VectorNav system:
     SITL::VectorNav *vectornav;
 
-    // simulated LORD MicroStrain system
+    // simulated MicroStrain system
     SITL::MicroStrain5 *microstrain5;
 
+    // simulated MicroStrain system
+    SITL::MicroStrain7 *microstrain7;
+
+    // simulated InertialLabs INS
+    SITL::InertialLabs *inertiallabs;
+    
 #if HAL_SIM_JSON_MASTER_ENABLED
     // Ride along instances via JSON SITL backend
     SITL::JSON_Master ride_along;
@@ -209,13 +222,19 @@ public:
     // simulated EFI MegaSquirt device:
     SITL::EFI_MegaSquirt *efi_ms;
 
+    // simulated EFI MegaSquirt device:
+    SITL::EFI_Hirth *efi_hirth;
+
     // output socket for flightgear viewing
-    SocketAPM fg_socket{true};
+    SocketAPM_native fg_socket{true};
     
     const char *defaults_path = HAL_PARAM_DEFAULTS_PATH;
 
     // simulated GPS devices
     SITL::GPS *gps[2];  // constrained by # of parameter sets
+
+    // Simulated ELRS radio
+    SITL::ELRS *elrs;
 
     // returns a voltage between 0V to 5V which should appear as the
     // voltage from the sensor
@@ -227,6 +246,10 @@ public:
     // send out SITL state as UDP multicast
     void multicast_state_open(void);
     void multicast_state_send(void);
+
+    // number of times we have paused the simulation for 1ms because
+    // the TCP queue is full:
+    uint32_t _serial_0_outqueue_full_count;
 
 protected:
     enum vehicle_type _vehicle;

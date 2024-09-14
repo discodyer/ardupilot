@@ -25,6 +25,7 @@
 
 #include <AP_HAL/Semaphores.h>
 
+#include "AP_AHRS_Backend.h"
 #include <AP_NavEKF2/AP_NavEKF2.h>
 #include <AP_NavEKF3/AP_NavEKF3.h>
 #include <AP_NavEKF/AP_Nav_Common.h>              // definitions shared by inertial and ekf nav filters
@@ -114,12 +115,27 @@ public:
     // return a wind estimation vector, in m/s; returns 0,0,0 on failure
     bool wind_estimate(Vector3f &wind) const;
 
+    // Determine how aligned heading_deg is with the wind. Return result
+    // is 1.0 when perfectly aligned heading into wind, -1 when perfectly
+    // aligned with-wind, and zero when perfect cross-wind. There is no
+    // distinction between a left or right cross-wind. Wind speed is ignored
+    float wind_alignment(const float heading_deg) const;
+
+    // returns forward head-wind component in m/s. Negative means tail-wind
+    float head_wind(void) const;
+
     // instruct DCM to update its wind estimate:
     void estimate_wind() {
 #if AP_AHRS_DCM_ENABLED
         dcm.estimate_wind();
 #endif
     }
+
+#if AP_AHRS_EXTERNAL_WIND_ESTIMATE_ENABLED
+    void set_external_wind_estimate(float speed, float direction) {
+        dcm.set_external_wind_estimate(speed, direction);
+    }
+#endif
 
     // return the parameter AHRS_WIND_MAX in metres per second
     uint8_t get_max_wind() const {
@@ -131,10 +147,11 @@ public:
      */
 
     // get apparent to true airspeed ratio
-    float get_EAS2TAS(void) const {
-        return state.EAS2TAS;
-    }
+    float get_EAS2TAS(void) const;
 
+    // get air density / sea level density - decreases as altitude climbs
+    float get_air_density_ratio(void) const;
+    
     // return an airspeed estimate if available. return true
     // if we have an estimate
     bool airspeed_estimate(float &airspeed_ret) const;
@@ -266,8 +283,8 @@ public:
 
     // return location corresponding to vector relative to the
     // vehicle's origin
-    bool get_location_from_origin_offset(Location &loc, const Vector3p &offset_ned) const WARN_IF_UNUSED;
-    bool get_location_from_home_offset(Location &loc, const Vector3p &offset_ned) const WARN_IF_UNUSED;
+    bool get_location_from_origin_offset_NED(Location &loc, const Vector3p &offset_ned) const WARN_IF_UNUSED;
+    bool get_location_from_home_offset_NED(Location &loc, const Vector3p &offset_ned) const WARN_IF_UNUSED;
 
     // Get a derivative of the vertical position in m/s which is kinematically consistent with the vertical position is required by some control loops.
     // This is different to the vertical velocity from the EKF which is not always consistent with the vertical position due to the various errors that are being corrected for.
@@ -400,7 +417,7 @@ public:
     void request_yaw_reset(void);
 
     // set position, velocity and yaw sources to either 0=primary, 1=secondary, 2=tertiary
-    void set_posvelyaw_source_set(uint8_t source_set_idx);
+    void set_posvelyaw_source_set(AP_NavEKF_Source::SourceSetSelection source_set_idx);
 
     //returns index of active source set used, 0=primary, 1=secondary, 2=tertiary
     uint8_t get_posvelyaw_source_set() const;
@@ -421,6 +438,29 @@ public:
         return _ekf_type;
     }
 
+    enum class EKFType : uint8_t {
+#if AP_AHRS_DCM_ENABLED
+        DCM = 0,
+#endif
+#if HAL_NAVEKF3_AVAILABLE
+        THREE = 3,
+#endif
+#if HAL_NAVEKF2_AVAILABLE
+        TWO = 2,
+#endif
+#if AP_AHRS_SIM_ENABLED
+        SIM = 10,
+#endif
+#if AP_AHRS_EXTERNAL_ENABLED
+        EXTERNAL = 11,
+#endif
+    };
+
+    // set the selected ekf type, for RC aux control
+    void set_ekf_type(EKFType ahrs_type) {
+        _ekf_type.set(ahrs_type);
+    }
+    
     // these are only out here so vehicles can reference them for parameters
 #if HAL_NAVEKF2_AVAILABLE
     NavEKF2 EKF2;
@@ -516,10 +556,6 @@ public:
      */
 
     // roll/pitch/yaw euler angles, all in radians
-    float roll;
-    float pitch;
-    float yaw;
-
     float get_roll() const { return roll; }
     float get_pitch() const { return pitch; }
     float get_yaw() const { return yaw; }
@@ -649,6 +685,11 @@ public:
 
 private:
 
+    // roll/pitch/yaw euler angles, all in radians
+    float roll;
+    float pitch;
+    float yaw;
+
     // optional view class
     AP_AHRS_View *_view;
 
@@ -668,7 +709,7 @@ private:
      */
     AP_Int8 _wind_max;
     AP_Int8 _board_orientation;
-    AP_Int8 _ekf_type;
+    AP_Enum<EKFType> _ekf_type;
 
     /*
      * DCM-backend parameters; it takes references to these
@@ -683,23 +724,6 @@ private:
     AP_Enum<GPSUse> _gps_use;
     AP_Int8 _gps_minsats;
 
-    enum class EKFType {
-#if AP_AHRS_DCM_ENABLED
-        DCM = 0,
-#endif
-#if HAL_NAVEKF3_AVAILABLE
-        THREE = 3,
-#endif
-#if HAL_NAVEKF2_AVAILABLE
-        TWO = 2,
-#endif
-#if AP_AHRS_SIM_ENABLED
-        SIM = 10,
-#endif
-#if HAL_EXTERNAL_AHRS_ENABLED
-        EXTERNAL = 11,
-#endif
-    };
     EKFType active_EKF_type(void) const { return state.active_EKF; }
 
     bool always_use_EKF() const {
@@ -784,7 +808,7 @@ private:
     void update_SITL(void);
 #endif
 
-#if HAL_EXTERNAL_AHRS_ENABLED
+#if AP_AHRS_EXTERNAL_ENABLED
     void update_external(void);
 #endif    
 
@@ -986,11 +1010,23 @@ private:
     struct AP_AHRS_Backend::Estimates sim_estimates;
 #endif
 
-#if HAL_EXTERNAL_AHRS_ENABLED
+#if AP_AHRS_EXTERNAL_ENABLED
     AP_AHRS_External external;
     struct AP_AHRS_Backend::Estimates external_estimates;
 #endif
 
+    enum class Options : uint16_t {
+        DISABLE_DCM_FALLBACK_FW=(1U<<0),
+        DISABLE_DCM_FALLBACK_VTOL=(1U<<1),
+    };
+    AP_Int16 _options;
+    
+    bool option_set(Options option) const {
+        return (_options & uint16_t(option)) != 0;
+    }
+
+    // true when we have completed the common origin setup
+    bool done_common_origin;
 };
 
 namespace AP {

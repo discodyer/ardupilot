@@ -78,6 +78,8 @@ public:
         return true;
     }
 
+    void set_external_wind_estimate(float speed, float direction);
+
     // return an airspeed estimate if available. return true
     // if we have an estimate
     bool airspeed_estimate(float &airspeed_ret) const override;
@@ -286,6 +288,8 @@ private:
     // pre-calculated trig cache:
     float _sin_yaw;
     float _cos_yaw;
+
+    uint32_t last_log_ms;
 };
 
 #endif  // AP_AHRS_DCM_ENABLED
